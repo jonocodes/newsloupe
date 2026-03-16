@@ -84,8 +84,9 @@ async def api_results():
             "embedding_score": r.embedding_score,
             "delta": r.delta,
             "max_score": r.max_score,
+            "read": r.max_score >= state["read_threshold"],
         })
-    return JSONResponse(output)
+    return JSONResponse({"threshold": state["read_threshold"], "stories": output})
 
 
 def parse_args():
