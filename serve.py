@@ -3,6 +3,7 @@ import argparse
 import asyncio
 from datetime import datetime
 
+import numpy as np
 import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -11,14 +12,22 @@ import core
 from output.html import render_html_string
 
 
+def compute_threshold(results) -> float:
+    if not results:
+        return 0.3
+    scores = [r.max_score for r in results]
+    return float(np.percentile(scores, 75))
+
+
 app = FastAPI()
 
 state = {
     "results": [],
     "last_updated": None,
+    "read_threshold": 0.3,
     "interests_path": "interests.json",
     "feed": "front_page",
-    "source": "algolia",
+    "source": "scraper",
 }
 
 
@@ -28,6 +37,7 @@ async def startup():
         core.run_scoring, state["interests_path"], state["feed"], state["source"], False
     )
     state["last_updated"] = datetime.now()
+    state["read_threshold"] = compute_threshold(state["results"])
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -37,6 +47,8 @@ async def index():
         sort_by="hn",
         last_updated=state["last_updated"],
         include_rescore_button=True,
+        read_threshold=state["read_threshold"],
+        source=state["source"],
     )
     return HTMLResponse(content=html)
 
@@ -47,6 +59,7 @@ async def rescore():
         core.run_scoring, state["interests_path"], state["feed"], state["source"], False
     )
     state["last_updated"] = datetime.now()
+    state["read_threshold"] = compute_threshold(state["results"])
     return JSONResponse({
         "status": "ok",
         "last_updated": state["last_updated"].isoformat(),
@@ -82,7 +95,7 @@ def parse_args():
     parser.add_argument("--feed", default="front_page",
                         choices=["front_page", "show_hn", "ask_hn", "story"],
                         help="Feed tag")
-    parser.add_argument("--source", default="algolia", choices=["algolia", "scraper"],
+    parser.add_argument("--source", default="scraper", choices=["algolia", "scraper"],
                         help="HN data source (default: algolia)")
     parser.add_argument("-p", "--port", type=int, default=8000,
                         help="Port to serve on")

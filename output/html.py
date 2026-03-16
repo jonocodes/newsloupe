@@ -15,6 +15,7 @@ def render_html_string(
     last_updated: datetime = None,
     include_rescore_button: bool = False,
     read_threshold: float = 0.3,
+    source: str = "scraper",
 ) -> str:
     if sort_by == "hn":
         sorted_results = list(results)
@@ -94,20 +95,35 @@ def render_html_string(
   .rank {{ color: #999; width: 36px; text-align: right; }}
   .score-cell {{ display: flex; align-items: center; gap: 6px; }}
   .bar {{ height: 6px; background: #2d8a2d; border-radius: 2px; flex-shrink: 0; }}
+  .meta {{ display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; margin-top: 4px; }}
+  .meta-item {{ font-size: 0.8rem; color: #888; }}
+  .meta-item span {{ color: #444; font-weight: 500; }}
+  .legend {{ background: white; border-radius: 6px; padding: 12px 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.82rem; color: #555; display: flex; gap: 24px; flex-wrap: wrap; }}
+  .legend-item strong {{ color: #222; }}
   @media print {{ #rescore-btn {{ display: none; }} }}
-  @media (max-width: 600px) {{ td, th {{ padding: 6px 8px; font-size: 0.8rem; }} }}
+  @media (max-width: 600px) {{ td, th {{ padding: 6px 8px; font-size: 0.8rem; }} .legend {{ gap: 12px; }} }}
 </style>
 </head>
 <body>
 <div class="header">
   <div>
-    <h1>newsloupe — HN Front Page Scored</h1>
-    <div class="ts">Generated: {ts}</div>
+    <h1>newsloupe</h1>
+    <div class="meta">
+      <div class="meta-item">Updated: <span>{ts}</span></div>
+      <div class="meta-item">Source: <span>{source}</span></div>
+      <div class="meta-item">Stories: <span>{len(sorted_results)}</span></div>
+    </div>
   </div>
   <div style="display:flex;align-items:center">
     {rescore_button_html}
     <span id="rescore-msg"></span>
   </div>
+</div>
+<div class="legend">
+  <div class="legend-item"><strong>TF-IDF</strong> — keyword overlap between the article title and your interests. Fast and literal.</div>
+  <div class="legend-item"><strong>Embed</strong> — semantic similarity via sentence embeddings. Catches meaning even when words differ.</div>
+  <div class="legend-item"><strong>Δ</strong> — embed minus TF-IDF. Large positive means embeddings found a match keywords missed.</div>
+  <div class="legend-item"><strong>Read</strong> — ✓ if score is in the top 25% of today's articles.</div>
 </div>
 <div class="table-wrap">
 <table id="results-table">

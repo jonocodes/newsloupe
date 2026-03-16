@@ -1,0 +1,11 @@
+.venv
+.flox
+.git
+.mypy_cache
+.claude
+__pycache__
+*.pyc
+.embeddings_cache.json
+output.html
+docs/
+tests/

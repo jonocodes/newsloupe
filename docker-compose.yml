@@ -1,0 +1,12 @@
+services:
+  newsloupe:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./interests.json:/app/interests.json:ro
+      - embeddings_cache:/app
+    restart: unless-stopped
+
+volumes:
+  embeddings_cache:
