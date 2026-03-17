@@ -36,50 +36,34 @@ def render_html_string(
 
     rows = []
     for i, r in enumerate(sorted_results, 1):
-        tfidf_bg = _score_bg(r.tfidf_score)
-        embed_bg = _score_bg(r.embedding_score)
-        delta_color = "#2d8a2d" if r.delta >= 0 else "#c0392b"
-        sign = "+" if r.delta >= 0 else ""
-        tfidf_bar = int(r.tfidf_score * 60)
-        embed_bar = int(r.embedding_score * 60)
         should_read = r.max_score >= read_threshold
         read_symbol = "✓" if should_read else "✗"
-        read_style = "color:#2d8a2d;font-weight:bold" if should_read else "color:#bbb"
+        read_class = "read-yes" if should_read else "read-no"
 
-        # ML score column (if available)
-        ml_cell = ""
+        # Build score badges
+        ml_badge = ""
         if r.ml_score is not None:
-            ml_bg = _score_bg(r.ml_score)
-            ml_bar = int(r.ml_score * 60)
-            ml_cell = f"""
-          <td style="background:{ml_bg}">
-            <div class="score-cell">
-              <span>{r.ml_score:.2f}</span>
-              <div class="bar" style="width:{ml_bar}px"></div>
-            </div>
-          </td>"""
-        else:
-            ml_cell = '<td style="color:#ccc;text-align:center">—</td>'
+            ml_pct = int(r.ml_score * 100)
+            ml_badge = f'<span class="score-badge ml" title="ML click probability">ML {ml_pct}%</span>'
 
         rows.append(f"""
         <tr data-object-id="{r.story.object_id}">
-          <td class="rank">{i}</td>
-          <td><a href="{r.story.url}" target="_blank" class="article-link" data-object-id="{r.story.object_id}">{r.story.title}</a></td>
-          <td style="background:{tfidf_bg}">
-            <div class="score-cell">
-              <span>{r.tfidf_score:.2f}</span>
-              <div class="bar" style="width:{tfidf_bar}px"></div>
+          <td class="rank">{i}.</td>
+          <td class="title-cell">
+            <div class="title-line">
+              <a href="{r.story.url}" target="_blank" class="article-link" data-object-id="{r.story.object_id}">{r.story.title}</a>
+            </div>
+            <div class="subtext">
+              <span class="score-badge tfidf" title="TF-IDF: {r.tfidf_score:.3f}">TF {int(r.tfidf_score * 100)}%</span>
+              <span class="score-badge embed" title="Embedding: {r.embedding_score:.3f}">EM {int(r.embedding_score * 100)}%</span>
+              {ml_badge}
+              <span class="{read_class}" title="Top 25%">{read_symbol}</span>
+              <span class="sep">|</span>
+              <a href="{r.story.hn_url}" target="_blank" class="discuss">discuss</a>
+              <span class="sep">|</span>
+              <span class="hn-meta">{r.story.points} pts · {r.story.num_comments} comments</span>
             </div>
           </td>
-          <td style="background:{embed_bg}">
-            <div class="score-cell">
-              <span>{r.embedding_score:.2f}</span>
-              <div class="bar" style="width:{embed_bar}px"></div>
-            </div>
-          </td>
-          <td style="color:{delta_color}">{sign}{r.delta:.2f}</td>{ml_cell}
-          <td style="{read_style};text-align:center">{read_symbol}</td>
-          <td><a href="{r.story.hn_url}" target="_blank">discuss</a></td>
         </tr>""")
 
     rows_html = "\n".join(rows)
@@ -92,91 +76,92 @@ def render_html_string(
 <title>newsloupe — HN Scored</title>
 <style>
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-  body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f5f5; color: #222; padding: 20px; }}
-  .header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }}
-  h1 {{ font-size: 1.2rem; font-weight: 600; }}
-  .ts {{ color: #666; font-size: 0.85rem; }}
-  #rescore-btn {{ padding: 6px 14px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }}
-  #rescore-btn:hover {{ background: #e0e0e0; }}
-  #rescore-msg {{ font-size: 0.85rem; color: #666; margin-left: 8px; }}
-  .table-wrap {{ overflow-x: auto; }}
-  table {{ width: 100%; border-collapse: collapse; background: white; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }}
-  thead th {{ background: #222; color: white; padding: 10px 12px; text-align: left; cursor: pointer; user-select: none; white-space: nowrap; position: sticky; top: 0; }}
-  thead th:hover {{ background: #444; }}
-  tbody tr:nth-child(even) {{ background: #fafafa; }}
-  tbody tr:hover {{ background: #eef4ff; }}
-  td {{ padding: 8px 12px; font-size: 0.875rem; vertical-align: middle; }}
-  td a {{ color: #1a73e8; text-decoration: none; }}
-  td a:hover {{ text-decoration: underline; }}
-  .rank {{ color: #999; width: 36px; text-align: right; }}
-  .score-cell {{ display: flex; align-items: center; gap: 6px; }}
-  .bar {{ height: 6px; background: #2d8a2d; border-radius: 2px; flex-shrink: 0; }}
-  .meta {{ display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; margin-top: 4px; }}
-  .meta-item {{ font-size: 0.8rem; color: #888; }}
-  .meta-item span {{ color: #444; font-weight: 500; }}
-  .legend {{ background: white; border-radius: 6px; padding: 12px 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.82rem; color: #555; display: flex; gap: 24px; flex-wrap: wrap; }}
-  .legend-item strong {{ color: #222; }}
-  @media print {{ #rescore-btn {{ display: none; }} }}
-  @media (max-width: 600px) {{ td, th {{ padding: 6px 8px; font-size: 0.8rem; }} .legend {{ gap: 12px; }} }}
+  body {{ font-family: Verdana, Geneva, sans-serif; background: #f6f6ef; color: #000; padding: 0; margin: 0; }}
+
+  .header {{ background: #ff6600; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }}
+  h1 {{ font-size: 14px; font-weight: bold; color: #000; margin: 0; }}
+  .header-controls {{ display: flex; align-items: center; gap: 8px; }}
+  #rescore-btn {{ padding: 4px 10px; background: #fff; border: 1px solid #ccc; border-radius: 3px; cursor: pointer; font-size: 11px; font-family: Verdana, Geneva, sans-serif; }}
+  #rescore-btn:hover {{ background: #f0f0f0; }}
+  #rescore-msg {{ font-size: 11px; color: #fff; }}
+
+  .meta {{ background: #f6f6ef; padding: 6px 12px; border-bottom: 1px solid #ff6600; font-size: 10px; color: #828282; }}
+  .meta-item {{ display: inline; margin-right: 12px; }}
+
+  .legend {{ background: #ffffd8; border: 1px solid #ff6600; padding: 8px 12px; margin: 12px; font-size: 10px; color: #000; line-height: 1.6; }}
+  .legend-item {{ display: inline; margin-right: 16px; }}
+  .legend-item strong {{ font-weight: bold; }}
+
+  table {{ width: 100%; border-collapse: collapse; background: #f6f6ef; }}
+  tbody tr {{ background: #f6f6ef; }}
+  tbody tr:hover {{ background: #ffffd8; }}
+
+  td {{ padding: 4px 8px; vertical-align: top; border-bottom: 1px solid #e8e8e8; }}
+  .rank {{ color: #828282; font-size: 11px; text-align: right; padding-right: 6px; width: 30px; }}
+
+  .title-cell {{ padding: 6px 8px; }}
+  .title-line {{ margin-bottom: 4px; }}
+  .article-link {{ color: #000; text-decoration: none; font-size: 11pt; line-height: 1.4; }}
+  .article-link:visited {{ color: #828282; }}
+  .article-link:hover {{ text-decoration: underline; }}
+
+  .subtext {{ font-size: 9pt; color: #828282; line-height: 1.6; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }}
+  .subtext a {{ color: #828282; text-decoration: none; }}
+  .subtext a:hover {{ text-decoration: underline; }}
+  .sep {{ color: #ccc; }}
+
+  .score-badge {{ display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 9px; font-weight: bold; white-space: nowrap; }}
+  .score-badge.tfidf {{ background: #d4edda; color: #155724; }}
+  .score-badge.embed {{ background: #d1ecf1; color: #0c5460; }}
+  .score-badge.ml {{ background: #fff3cd; color: #856404; }}
+
+  .read-yes {{ color: #2d8a2d; font-weight: bold; font-size: 11px; }}
+  .read-no {{ color: #ccc; font-size: 11px; }}
+
+  .hn-meta {{ color: #828282; font-size: 9pt; }}
+  .discuss {{ color: #828282 !important; }}
+
+  @media (max-width: 768px) {{
+    body {{ font-size: 12px; }}
+    .header {{ padding: 6px 8px; }}
+    h1 {{ font-size: 12px; }}
+    .rank {{ display: none; }}
+    .title-cell {{ padding: 8px 6px; }}
+    .article-link {{ font-size: 11px; }}
+    .subtext {{ font-size: 8pt; gap: 4px; }}
+    .score-badge {{ font-size: 8px; padding: 1px 4px; }}
+    .legend {{ margin: 8px; padding: 6px 8px; font-size: 9px; }}
+    .legend-item {{ display: block; margin-right: 0; }}
+  }}
+
+  @media print {{ #rescore-btn, .legend {{ display: none; }} }}
 </style>
 </head>
 <body>
 <div class="header">
-  <div>
-    <h1>newsloupe</h1>
-    <div class="meta">
-      <div class="meta-item">Updated: <span>{ts}</span></div>
-      <div class="meta-item">Source: <span>{source}</span></div>
-      <div class="meta-item">Stories: <span>{len(sorted_results)}</span></div>
-    </div>
-  </div>
-  <div style="display:flex;align-items:center">
+  <h1>newsloupe</h1>
+  <div class="header-controls">
     {rescore_button_html}
     <span id="rescore-msg"></span>
   </div>
 </div>
-<div class="legend">
-  <div class="legend-item"><strong>TF-IDF</strong> — keyword overlap between the article title and your interests. Fast and literal.</div>
-  <div class="legend-item"><strong>Embed</strong> — semantic similarity via sentence embeddings. Catches meaning even when words differ.</div>
-  <div class="legend-item"><strong>Δ</strong> — embed minus TF-IDF. Large positive means embeddings found a match keywords missed.</div>
-  <div class="legend-item"><strong>ML</strong> — personalized click prediction trained on your history. Requires 20+ clicks.</div>
-  <div class="legend-item"><strong>Read</strong> — ✓ if score is in the top 25% of today's articles.</div>
+<div class="meta">
+  <span class="meta-item">Updated: {ts}</span>
+  <span class="meta-item">Source: {source}</span>
+  <span class="meta-item">Stories: {len(sorted_results)}</span>
 </div>
-<div class="table-wrap">
+<div class="legend">
+  <span class="legend-item"><strong>TF</strong>=keyword match</span>
+  <span class="legend-item"><strong>EM</strong>=semantic similarity</span>
+  <span class="legend-item"><strong>ML</strong>=predicted click probability</span>
+  <span class="legend-item"><strong>✓</strong>=top 25%</span>
+</div>
 <table id="results-table">
-  <thead>
-    <tr>
-      <th onclick="sortTable(0)">#</th>
-      <th onclick="sortTable(1)">Title</th>
-      <th onclick="sortTable(2)">TF-IDF</th>
-      <th onclick="sortTable(3)">Embed</th>
-      <th onclick="sortTable(4)">Δ</th>
-      <th onclick="sortTable(5)">ML</th>
-      <th onclick="sortTable(6)">Read</th>
-      <th>HN</th>
-    </tr>
-  </thead>
   <tbody>
     {rows_html}
   </tbody>
 </table>
-</div>
 <script>
-var sortDir = {{}};
-function sortTable(col) {{
-  var table = document.getElementById("results-table");
-  var tbody = table.tBodies[0];
-  var rows = Array.from(tbody.rows);
-  sortDir[col] = !sortDir[col];
-  rows.sort(function(a, b) {{
-    var av = a.cells[col].innerText.trim();
-    var bv = b.cells[col].innerText.trim();
-    var an = parseFloat(av), bn = parseFloat(bv);
-    if (!isNaN(an) && !isNaN(bn)) return sortDir[col] ? bn - an : an - bn;
-    return sortDir[col] ? av.localeCompare(bv) : bv.localeCompare(av);
-  }});
-  rows.forEach(function(r) {{ tbody.appendChild(r); }});
-}}
 function rescore() {{
   var btn = document.getElementById("rescore-btn");
   var msg = document.getElementById("rescore-msg");
@@ -193,22 +178,36 @@ function rescore() {{
     }});
 }}
 
-// Track clicks on article links
+// Track clicks on article links (including right-click and middle-click)
 document.addEventListener("DOMContentLoaded", function() {{
+  function trackClick(objectId) {{
+    if (!objectId) return;
+    fetch("/api/click", {{
+      method: "POST",
+      headers: {{"Content-Type": "application/json"}},
+      body: JSON.stringify({{object_id: objectId}}),
+      keepalive: true
+    }}).catch(function(err) {{
+      console.error("Failed to track click:", err);
+    }});
+  }}
+
   document.querySelectorAll("a.article-link").forEach(function(link) {{
+    var objectId = link.getAttribute("data-object-id");
+
+    // Track left-click and middle-click
     link.addEventListener("click", function(e) {{
-      var objectId = this.getAttribute("data-object-id");
-      if (objectId) {{
-        // Send click event asynchronously (don't block navigation)
-        fetch("/api/click", {{
-          method: "POST",
-          headers: {{"Content-Type": "application/json"}},
-          body: JSON.stringify({{object_id: objectId}}),
-          keepalive: true  // Ensure request completes even if page unloads
-        }}).catch(function(err) {{
-          console.error("Failed to track click:", err);
-        }});
-      }}
+      trackClick(objectId);
+    }});
+
+    // Track right-click (context menu)
+    link.addEventListener("contextmenu", function(e) {{
+      trackClick(objectId);
+    }});
+
+    // Track auxiliary button clicks (middle-click, back/forward buttons)
+    link.addEventListener("auxclick", function(e) {{
+      trackClick(objectId);
     }});
   }});
 }});

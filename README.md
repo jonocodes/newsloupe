@@ -1,8 +1,15 @@
 # newsloupe
 
-Score Hacker News front page articles against your personal reading history. Uses TF-IDF and sentence embeddings side by side to surface what's worth reading.
+A personalized wrapper for Hacker News that learns what you like to read.
 
-Results are shown in HN's original ranking order. Each article gets a ✓/✗ based on whether its score falls in the top 25% of today's run — the threshold auto-calibrates each time so you always get a useful signal regardless of absolute score values.
+**How it works:** Browse HN articles as usual. When you click on stories, newsloupe tracks your choices and uses machine learning to predict what you'll find interesting. The more you use it, the better it gets at highlighting articles you'll actually want to read.
+
+**Scoring methods:**
+- **TF-IDF** — keyword overlap with your interests
+- **Embeddings** — semantic similarity (catches meaning even when words differ)
+- **ML predictions** — personalized click probability based on your history (requires 20+ clicks)
+
+Results are shown in HN's original ranking order. Each article gets a ✓/✗ based on whether its score falls in the top 25% of today's batch — the threshold auto-calibrates each run so you always get a useful signal.
 
 ## Running with Docker
 
@@ -30,18 +37,36 @@ docker compose run --rm newsloupe python seed.py --file interests.json --databas
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python serve.py
+
+# Production
+uvicorn serve:app --host 127.0.0.1 --port 8000
+
+# Development (with auto-reload)
+uvicorn serve:app --host 0.0.0.0 --port 8000 --reload
+
 # open http://127.0.0.1:8000
 ```
 
-## Server options
+## Configuration
+
+Configure via environment variables:
 
 ```bash
-python serve.py --source scraper   # scrape news.ycombinator.com directly (default)
-python serve.py --source algolia   # use Algolia HN Search API
-python serve.py --feed show_hn     # score Show HN instead of front page
-python serve.py --port 9000
-python serve.py --file ~/my-interests.json
+# Interests file
+export INTERESTS_PATH=/path/to/interests.json
+
+# HN feed: front_page (default), show_hn, ask_hn, story
+export HN_FEED=show_hn
+
+# Data source: scraper (default), algolia
+export HN_SOURCE=scraper
+
+# Database paths
+export CLICKS_DB_PATH=/path/to/clicks.db
+export EMBEDDINGS_CACHE_PATH=/path/to/.embeddings_cache.json
+
+# Then run
+uvicorn serve:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ## Your interests
