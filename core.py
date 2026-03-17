@@ -8,7 +8,9 @@ from sources.algolia import AlgoliaSource
 from sources.scraper import ScraperSource
 from scorers.tfidf import TfidfScorer
 from scorers.embeddings import EmbeddingScorer
+from scorers.ml import MLScorer
 from cache import EmbeddingCache
+from click_store import ClickStore
 
 
 @dataclass
@@ -18,6 +20,7 @@ class ScoredStory:
     embedding_score: float
     delta: float
     max_score: float
+    ml_score: float = None  # ML prediction score (0-1 probability)
 
 
 def load_and_validate_interests(path: str) -> list[dict]:
@@ -54,6 +57,8 @@ def run_scoring(
     feed: str,
     source: str,
     no_cache: bool,
+    enable_ml: bool = True,
+    click_db_path: str = "clicks.db",
 ) -> list[ScoredStory]:
     interests = load_and_validate_interests(interests_path)
     interest_titles = [i["title"] for i in interests]
@@ -83,7 +88,9 @@ def run_scoring(
         interest_vecs = embedding_scorer.encode(interest_titles)
         interest_embeddings = np.array(interest_vecs)
     else:
-        cache = EmbeddingCache()
+        import os
+        cache_path = os.environ.get("EMBEDDINGS_CACHE_PATH", ".embeddings_cache.json")
+        cache = EmbeddingCache(cache_path=cache_path)
         cached_embeddings = cache.load()
         stale, new = cache.get_stale_and_new(cached_embeddings, interest_titles)
 
@@ -104,6 +111,7 @@ def run_scoring(
     print(f"Scoring {len(stories)} stories...", file=sys.stderr)
     embedding_scores = embedding_scorer.score(interest_embeddings, story_titles)
 
+    # Build initial results
     results = []
     for story, tfidf, embed in zip(stories, tfidf_scores, embedding_scores):
         results.append(ScoredStory(
@@ -113,5 +121,27 @@ def run_scoring(
             delta=embed - tfidf,
             max_score=max(tfidf, embed),
         ))
+
+    # Add ML predictions if enabled
+    if enable_ml:
+        ml_scorer = MLScorer(min_training_samples=20)
+        click_store = ClickStore(db_path=click_db_path)
+        training_data = click_store.get_training_data(min_clicks=20)
+
+        if training_data:
+            print(f"Training ML model on {len(training_data)} clicks...", file=sys.stderr)
+            if ml_scorer.train(training_data):
+                ml_predictions = ml_scorer.predict(results)
+                if ml_predictions:
+                    for result, ml_score in zip(results, ml_predictions):
+                        result.ml_score = ml_score
+                    print(f"ML predictions generated.", file=sys.stderr)
+
+                    # Print feature importance for debugging
+                    importance = ml_scorer.get_feature_importance()
+                    if importance:
+                        print("ML feature importance:", importance, file=sys.stderr)
+        else:
+            print("Insufficient click data for ML (<20 clicks). Using semantic scoring only.", file=sys.stderr)
 
     return results

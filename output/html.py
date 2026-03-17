@@ -45,10 +45,26 @@ def render_html_string(
         should_read = r.max_score >= read_threshold
         read_symbol = "✓" if should_read else "✗"
         read_style = "color:#2d8a2d;font-weight:bold" if should_read else "color:#bbb"
+
+        # ML score column (if available)
+        ml_cell = ""
+        if r.ml_score is not None:
+            ml_bg = _score_bg(r.ml_score)
+            ml_bar = int(r.ml_score * 60)
+            ml_cell = f"""
+          <td style="background:{ml_bg}">
+            <div class="score-cell">
+              <span>{r.ml_score:.2f}</span>
+              <div class="bar" style="width:{ml_bar}px"></div>
+            </div>
+          </td>"""
+        else:
+            ml_cell = '<td style="color:#ccc;text-align:center">—</td>'
+
         rows.append(f"""
-        <tr>
+        <tr data-object-id="{r.story.object_id}">
           <td class="rank">{i}</td>
-          <td><a href="{r.story.url}" target="_blank">{r.story.title}</a></td>
+          <td><a href="{r.story.url}" target="_blank" class="article-link" data-object-id="{r.story.object_id}">{r.story.title}</a></td>
           <td style="background:{tfidf_bg}">
             <div class="score-cell">
               <span>{r.tfidf_score:.2f}</span>
@@ -61,7 +77,7 @@ def render_html_string(
               <div class="bar" style="width:{embed_bar}px"></div>
             </div>
           </td>
-          <td style="color:{delta_color}">{sign}{r.delta:.2f}</td>
+          <td style="color:{delta_color}">{sign}{r.delta:.2f}</td>{ml_cell}
           <td style="{read_style};text-align:center">{read_symbol}</td>
           <td><a href="{r.story.hn_url}" target="_blank">discuss</a></td>
         </tr>""")
@@ -123,6 +139,7 @@ def render_html_string(
   <div class="legend-item"><strong>TF-IDF</strong> — keyword overlap between the article title and your interests. Fast and literal.</div>
   <div class="legend-item"><strong>Embed</strong> — semantic similarity via sentence embeddings. Catches meaning even when words differ.</div>
   <div class="legend-item"><strong>Δ</strong> — embed minus TF-IDF. Large positive means embeddings found a match keywords missed.</div>
+  <div class="legend-item"><strong>ML</strong> — personalized click prediction trained on your history. Requires 20+ clicks.</div>
   <div class="legend-item"><strong>Read</strong> — ✓ if score is in the top 25% of today's articles.</div>
 </div>
 <div class="table-wrap">
@@ -134,7 +151,8 @@ def render_html_string(
       <th onclick="sortTable(2)">TF-IDF</th>
       <th onclick="sortTable(3)">Embed</th>
       <th onclick="sortTable(4)">Δ</th>
-      <th onclick="sortTable(5)">Read</th>
+      <th onclick="sortTable(5)">ML</th>
+      <th onclick="sortTable(6)">Read</th>
       <th>HN</th>
     </tr>
   </thead>
@@ -174,6 +192,26 @@ function rescore() {{
       btn.textContent = "Re-score";
     }});
 }}
+
+// Track clicks on article links
+document.addEventListener("DOMContentLoaded", function() {{
+  document.querySelectorAll("a.article-link").forEach(function(link) {{
+    link.addEventListener("click", function(e) {{
+      var objectId = this.getAttribute("data-object-id");
+      if (objectId) {{
+        // Send click event asynchronously (don't block navigation)
+        fetch("/api/click", {{
+          method: "POST",
+          headers: {{"Content-Type": "application/json"}},
+          body: JSON.stringify({{object_id: objectId}}),
+          keepalive: true  // Ensure request completes even if page unloads
+        }}).catch(function(err) {{
+          console.error("Failed to track click:", err);
+        }});
+      }}
+    }});
+  }});
+}});
 </script>
 </body>
 </html>"""

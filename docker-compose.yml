@@ -5,8 +5,11 @@ services:
       - "8000:8000"
     volumes:
       - ./interests.json:/app/interests.json:ro
-      - embeddings_cache:/app
+      - app_data:/app/data
+    environment:
+      - CLICKS_DB_PATH=/app/data/clicks.db
+      - EMBEDDINGS_CACHE_PATH=/app/data/.embeddings_cache.json
     restart: unless-stopped
 
 volumes:
-  embeddings_cache:
+  app_data:

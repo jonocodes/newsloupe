@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 import core
 from output.html import render_html_string
+from click_store import ClickStore
 
 
 def compute_threshold(results) -> float:
@@ -28,13 +29,19 @@ state = {
     "interests_path": "interests.json",
     "feed": "front_page",
     "source": "scraper",
+    "click_store": None,
 }
 
 
 @app.on_event("startup")
 async def startup():
+    import os
+    clicks_db_path = os.environ.get("CLICKS_DB_PATH", "clicks.db")
+    state["click_store"] = ClickStore(db_path=clicks_db_path)
+    state["click_db_path"] = clicks_db_path
     state["results"] = await asyncio.to_thread(
-        core.run_scoring, state["interests_path"], state["feed"], state["source"], False
+        core.run_scoring, state["interests_path"], state["feed"], state["source"], False,
+        enable_ml=True, click_db_path=clicks_db_path
     )
     state["last_updated"] = datetime.now()
     state["read_threshold"] = compute_threshold(state["results"])
@@ -56,7 +63,8 @@ async def index():
 @app.post("/rescore")
 async def rescore():
     state["results"] = await asyncio.to_thread(
-        core.run_scoring, state["interests_path"], state["feed"], state["source"], False
+        core.run_scoring, state["interests_path"], state["feed"], state["source"], False,
+        enable_ml=True, click_db_path=state.get("click_db_path", "clicks.db")
     )
     state["last_updated"] = datetime.now()
     state["read_threshold"] = compute_threshold(state["results"])
@@ -84,9 +92,65 @@ async def api_results():
             "embedding_score": r.embedding_score,
             "delta": r.delta,
             "max_score": r.max_score,
+            "ml_score": r.ml_score,
             "read": r.max_score >= state["read_threshold"],
         })
     return JSONResponse({"threshold": state["read_threshold"], "stories": output})
+
+
+@app.post("/api/click")
+async def track_click(data: dict):
+    """Record a click event when user clicks an article link."""
+    store = state["click_store"]
+    if not store:
+        return JSONResponse({"status": "error", "message": "Click store not initialized"}, status_code=500)
+
+    # Find the corresponding story in current results
+    object_id = data.get("object_id")
+    if not object_id:
+        return JSONResponse({"status": "error", "message": "object_id required"}, status_code=400)
+
+    # Find story data
+    story_data = None
+    for r in state["results"]:
+        if r.story.object_id == object_id:
+            story_data = r
+            break
+
+    if not story_data:
+        return JSONResponse({"status": "error", "message": "Story not found"}, status_code=404)
+
+    # Record click with full metadata
+    await asyncio.to_thread(
+        store.record_click,
+        title=story_data.story.title,
+        url=story_data.story.url,
+        object_id=story_data.story.object_id,
+        hn_url=story_data.story.hn_url,
+        tfidf_score=story_data.tfidf_score,
+        embedding_score=story_data.embedding_score,
+        delta=story_data.delta,
+        hn_points=story_data.story.points,
+        hn_comments=story_data.story.num_comments,
+        author=story_data.story.author,
+        created_at=story_data.story.created_at,
+    )
+
+    return JSONResponse({"status": "ok", "total_clicks": store.get_click_count()})
+
+
+@app.get("/api/clicks")
+async def get_clicks(limit: int = 100):
+    """Get recent click history."""
+    store = state["click_store"]
+    if not store:
+        return JSONResponse({"status": "error", "message": "Click store not initialized"}, status_code=500)
+
+    clicks = await asyncio.to_thread(store.get_all_clicks, limit)
+    return JSONResponse({
+        "total": store.get_click_count(),
+        "clicks": clicks
+    })
 
 
 def parse_args():

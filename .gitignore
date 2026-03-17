@@ -1,6 +1,6 @@
 .flox
 .venv
 __pycache__
-**/__pycache__
 .embeddings_cache.json
+clicks.db
 *.pyc
